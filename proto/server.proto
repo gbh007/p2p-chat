@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package p2pchat;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "proto/gen";
+
+service Server {
+  rpc ReadMessages(ReadMessagesRequest) returns (stream ReadMessagesResponse) {}
+  rpc SendMessage(SendMessageRequest) returns (SendMessageResponse) {}
+}
+
+message ReadMessagesRequest {
+  string channel = 1;
+  string login = 2;
+}
+
+message ReadMessagesResponse {
+  string login = 1;
+  string message = 2;
+  google.protobuf.Timestamp ts = 3;
+}
+
+message SendMessageRequest {
+  string login = 1;
+  string message = 2;
+}
+
+message SendMessageResponse {
+  google.protobuf.Timestamp ts = 1;
+}
