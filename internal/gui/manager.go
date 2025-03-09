@@ -8,8 +8,28 @@ import (
 	"github.com/gbh007/p2p-chat/internal/entities"
 )
 
+const (
+	chatListViewName    = "list"
+	chatHistoryViewName = "chat"
+	chatMessageViewName = "message"
+)
+
+type callbacker interface {
+	SendMessage(chat, msg string)
+}
+
 type Manager struct {
 	g *gocui.Gui
+
+	callbacker callbacker
+
+	currentChatName string
+}
+
+func New(callbacker callbacker) *Manager {
+	return &Manager{
+		callbacker: callbacker,
+	}
 }
 
 func (gm *Manager) Init() error {
@@ -68,12 +88,13 @@ func (gm *Manager) quit(g *gocui.Gui, v *gocui.View) error {
 func (gm *Manager) Layout(g *gocui.Gui) error {
 	maxX, maxY := g.Size()
 
-	if v, err := g.SetView("list", 0, 0, maxX/3-2, maxY-1, 0); err != nil {
+	if v, err := g.SetView(chatListViewName, 0, 0, maxX/3-2, maxY-1, 0); err != nil {
 		if !errors.Is(err, gocui.ErrUnknownView) {
 			return err
 		}
 
 		v.Title = "Chat list"
+		v.SelBgColor = gocui.ColorGreen
 
 		for _, val := range []string{
 			"chat 1",
@@ -90,13 +111,13 @@ func (gm *Manager) Layout(g *gocui.Gui) error {
 			return err
 		}
 
-		_, err = g.SetCurrentView("list")
+		_, err = g.SetCurrentView(chatListViewName)
 		if err != nil {
 			return err
 		}
 	}
 
-	if v, err := g.SetView("chat", maxX/3, 0, maxX-1, maxY-4, 0); err != nil {
+	if v, err := g.SetView(chatHistoryViewName, maxX/3, 0, maxX-1, maxY-4, 0); err != nil {
 		if !errors.Is(err, gocui.ErrUnknownView) {
 			return err
 		}
@@ -154,13 +175,13 @@ func (gm *Manager) Layout(g *gocui.Gui) error {
 		}
 	}
 
-	if v, err := g.SetView("message", maxX/3, maxY-3, maxX-1, maxY-1, 0); err != nil {
+	if v, err := g.SetView(chatMessageViewName, maxX/3, maxY-3, maxX-1, maxY-1, 0); err != nil {
 		if !errors.Is(err, gocui.ErrUnknownView) {
 			return err
 		}
 
 		v.Title = "Message"
-		v.Editor = gocui.DefaultEditor
+		v.Editor = gocui.EditorFunc(gm.editMessage)
 		v.Editable = true
 	}
 
@@ -169,9 +190,9 @@ func (gm *Manager) Layout(g *gocui.Gui) error {
 
 func (gm *Manager) nextView(g *gocui.Gui, v *gocui.View) error {
 	viewNames := map[string]string{
-		"list":    "chat",
-		"chat":    "message",
-		"message": "list",
+		chatListViewName:    chatHistoryViewName,
+		chatHistoryViewName: chatMessageViewName,
+		chatMessageViewName: chatListViewName,
 	}
 
 	next, ok := viewNames[v.Name()]
@@ -184,7 +205,7 @@ func (gm *Manager) nextView(g *gocui.Gui, v *gocui.View) error {
 		return err
 	}
 
-	if nextView.Name() == "message" {
+	if nextView.Name() == chatMessageViewName {
 		g.Cursor = true
 	} else {
 		g.Cursor = false
@@ -195,7 +216,7 @@ func (gm *Manager) nextView(g *gocui.Gui, v *gocui.View) error {
 
 func (gm *Manager) HandleMessage(msg entities.Message) {
 	gm.g.Update(func(g *gocui.Gui) error {
-		v, err := g.View("chat")
+		v, err := g.View(chatHistoryViewName)
 		if err != nil {
 			return err
 		}
@@ -207,6 +228,18 @@ func (gm *Manager) HandleMessage(msg entities.Message) {
 
 		return nil
 	})
+}
+
+func (gm *Manager) editMessage(v *gocui.View, key gocui.Key, ch rune, mod gocui.Modifier) {
+	if key == gocui.KeyEnter {
+		msg := v.Buffer()
+		gm.callbacker.SendMessage(gm.currentChatName, msg)
+		v.Clear()
+
+		return
+	}
+
+	gocui.DefaultEditor.Edit(v, key, ch, mod)
 }
 
 func writeMessage(v *gocui.View, msg entities.Message) error {
