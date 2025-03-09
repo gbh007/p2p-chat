@@ -12,6 +12,7 @@ type controllerMock struct {
 
 	gui interface {
 		HandleMessage(msg entities.Message)
+		NewChat(name string)
 	}
 }
 
@@ -35,6 +36,7 @@ func (c *controllerMock) SendMessage(chat, msg string) {
 
 func (c *controllerMock) SetGUI(gui interface {
 	HandleMessage(msg entities.Message)
+	NewChat(name string)
 }) {
 	c.gui = gui
 }
@@ -43,6 +45,10 @@ func (c *controllerMock) Serve() {
 	for v := range c.ch {
 		c.gui.HandleMessage(v)
 	}
+}
+
+func (c *controllerMock) Connect(name string) {
+	c.gui.NewChat(name)
 }
 
 func main() {
@@ -57,10 +63,6 @@ func main() {
 	cm.SetGUI(gm)
 
 	go cm.Serve()
-
-	gm.NewChat("chat 1")
-	gm.NewChat("chat 10")
-	gm.NewChat("chat 11")
 
 	err = gm.MainLoop()
 	if err != nil {

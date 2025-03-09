@@ -9,13 +9,15 @@ import (
 )
 
 const (
-	chatListViewName    = "list"
-	chatHistoryViewName = "chat"
-	chatMessageViewName = "message"
+	chatConnectNameViewName = "chat-name"
+	chatListViewName        = "list"
+	chatHistoryViewName     = "chat/"
+	chatMessageViewName     = "message"
 )
 
 type callbacker interface {
 	SendMessage(chat, msg string)
+	Connect(name string)
 }
 
 type Manager struct {
@@ -89,18 +91,36 @@ func (gm *Manager) quit(g *gocui.Gui, v *gocui.View) error {
 func (gm *Manager) Layout(g *gocui.Gui) error {
 	maxX, maxY := g.Size()
 
-	if v, err := g.SetView(chatListViewName, 0, 0, maxX/3-2, maxY-1, 0); err != nil {
+	chatSelectorX := maxX/3 - 2
+
+	if chatSelectorX > 20 {
+		chatSelectorX = 20
+	}
+
+	if v, err := g.SetView(chatConnectNameViewName, 0, 0, chatSelectorX, 2, 0); err != nil {
+		if !errors.Is(err, gocui.ErrUnknownView) {
+			return err
+		}
+
+		v.Title = "Connect to"
+		v.Editor = gocui.EditorFunc(gm.editChatName)
+		v.Editable = true
+
+		_, err = g.SetCurrentView(chatConnectNameViewName)
+		if err != nil {
+			return err
+		}
+
+		g.Cursor = true
+	}
+
+	if v, err := g.SetView(chatListViewName, 0, 3, chatSelectorX, maxY-1, 0); err != nil {
 		if !errors.Is(err, gocui.ErrUnknownView) {
 			return err
 		}
 
 		v.Title = "Chat list"
 		v.SelBgColor = gocui.ColorGreen
-
-		_, err = g.SetCurrentView(chatListViewName)
-		if err != nil {
-			return err
-		}
 
 		if err := gm.g.SetKeybinding(chatListViewName, gocui.KeyArrowUp, gocui.ModNone, gm.prevChat); err != nil {
 			return err
@@ -119,7 +139,7 @@ func (gm *Manager) Layout(g *gocui.Gui) error {
 		}
 	}
 
-	if v, err := g.SetView(chatMessageViewName, maxX/3, maxY-3, maxX-1, maxY-1, 0); err != nil {
+	if v, err := g.SetView(chatMessageViewName, chatSelectorX+2, maxY-3, maxX-1, maxY-1, 0); err != nil {
 		if !errors.Is(err, gocui.ErrUnknownView) {
 			return err
 		}
@@ -127,6 +147,7 @@ func (gm *Manager) Layout(g *gocui.Gui) error {
 		v.Title = "Message"
 		v.Editor = gocui.EditorFunc(gm.editMessage)
 		v.Editable = true
+		v.Visible = false
 	}
 
 	return nil
@@ -138,9 +159,10 @@ func (gm *Manager) nextView(g *gocui.Gui, v *gocui.View) error {
 	}
 
 	viewNames := map[string]string{
+		chatConnectNameViewName:                  chatListViewName,
 		chatListViewName:                         chatHistoryViewName + gm.currentChatName,
 		chatHistoryViewName + gm.currentChatName: chatMessageViewName,
-		chatMessageViewName:                      chatListViewName,
+		chatMessageViewName:                      chatConnectNameViewName,
 	}
 
 	next, ok := viewNames[v.Name()]
@@ -153,7 +175,8 @@ func (gm *Manager) nextView(g *gocui.Gui, v *gocui.View) error {
 		return err
 	}
 
-	if nextView.Name() == chatMessageViewName {
+	if nextView.Name() == chatMessageViewName ||
+		nextView.Name() == chatConnectNameViewName {
 		g.Cursor = true
 	} else {
 		g.Cursor = false
@@ -183,6 +206,21 @@ func (gm *Manager) editMessage(v *gocui.View, key gocui.Key, ch rune, mod gocui.
 		msg := v.Buffer()
 		gm.callbacker.SendMessage(gm.currentChatName, msg)
 		v.Clear()
+
+		return
+	}
+
+	gocui.DefaultEditor.Edit(v, key, ch, mod)
+}
+
+func (gm *Manager) editChatName(v *gocui.View, key gocui.Key, ch rune, mod gocui.Modifier) {
+	if key == gocui.KeyEnter {
+		msg := v.Buffer()
+		gm.callbacker.Connect(msg)
+		v.Clear()
+
+		_, _ = gm.g.SetCurrentView(chatListViewName)
+		gm.g.Cursor = false
 
 		return
 	}
@@ -306,7 +344,13 @@ func (gm *Manager) NewChat(name string) {
 	gm.g.Update(func(g *gocui.Gui) error {
 		maxX, maxY := g.Size()
 
-		if v, err := g.SetView(chatHistoryViewName+name, maxX/3, 0, maxX-1, maxY-4, 0); err != nil {
+		chatSelectorX := maxX/3 - 2
+
+		if chatSelectorX > 20 {
+			chatSelectorX = 20
+		}
+
+		if v, err := g.SetView(chatHistoryViewName+name, chatSelectorX+2, 0, maxX-1, maxY-4, 0); err != nil {
 			if !errors.Is(err, gocui.ErrUnknownView) {
 				return err
 			}
@@ -335,6 +379,13 @@ func (gm *Manager) NewChat(name string) {
 
 				v.Visible = true
 				gm.currentChatName = name
+
+				mView, err := g.View(chatMessageViewName)
+				if err != nil {
+					return err
+				}
+
+				mView.Visible = true
 			}
 		}
 
