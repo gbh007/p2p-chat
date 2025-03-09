@@ -121,6 +121,7 @@ func (gm *Manager) Layout(g *gocui.Gui) error {
 
 		v.Title = "Chat list"
 		v.SelBgColor = gocui.ColorGreen
+		v.SelFgColor = gocui.ColorBlack
 
 		if err := gm.g.SetKeybinding(chatListViewName, gocui.KeyArrowUp, gocui.ModNone, gm.prevChat); err != nil {
 			return err
@@ -187,7 +188,7 @@ func (gm *Manager) nextView(g *gocui.Gui, v *gocui.View) error {
 
 func (gm *Manager) HandleMessage(msg entities.Message) {
 	gm.g.Update(func(g *gocui.Gui) error {
-		v, err := g.View(chatHistoryViewName + gm.currentChatName)
+		v, err := g.View(chatHistoryViewName + msg.Chat)
 		if err != nil {
 			return err
 		}

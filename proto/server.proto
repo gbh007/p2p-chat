@@ -24,7 +24,8 @@ message ReadMessagesResponse {
 
 message SendMessageRequest {
   string login = 1;
-  string message = 2;
+  string channel = 2;
+  string message = 3;
 }
 
 message SendMessageResponse {
