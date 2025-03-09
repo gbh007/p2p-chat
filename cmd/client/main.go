@@ -58,6 +58,10 @@ func main() {
 
 	go cm.Serve()
 
+	gm.NewChat("chat 1")
+	gm.NewChat("chat 10")
+	gm.NewChat("chat 11")
+
 	err = gm.MainLoop()
 	if err != nil {
 		panic(err)

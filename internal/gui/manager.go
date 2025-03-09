@@ -2,7 +2,7 @@ package gui
 
 import (
 	"errors"
-	"time"
+	"slices"
 
 	"github.com/awesome-gocui/gocui"
 	"github.com/gbh007/p2p-chat/internal/entities"
@@ -28,7 +28,8 @@ type Manager struct {
 
 func New(callbacker callbacker) *Manager {
 	return &Manager{
-		callbacker: callbacker,
+		callbacker:      callbacker,
+		currentChatName: "chat 3",
 	}
 }
 
@@ -96,82 +97,25 @@ func (gm *Manager) Layout(g *gocui.Gui) error {
 		v.Title = "Chat list"
 		v.SelBgColor = gocui.ColorGreen
 
-		for _, val := range []string{
-			"chat 1",
-			"chat 2",
-			"chat 3",
-			"chat 4",
-		} {
-			v.WriteString(val)
-			v.WriteString("\n")
-		}
-
-		err := v.SetHighlight(2, true)
-		if err != nil {
-			return err
-		}
-
 		_, err = g.SetCurrentView(chatListViewName)
 		if err != nil {
 			return err
 		}
-	}
 
-	if v, err := g.SetView(chatHistoryViewName, maxX/3, 0, maxX-1, maxY-4, 0); err != nil {
-		if !errors.Is(err, gocui.ErrUnknownView) {
+		if err := gm.g.SetKeybinding(chatListViewName, gocui.KeyArrowUp, gocui.ModNone, gm.prevChat); err != nil {
 			return err
 		}
 
-		v.Title = "Chat"
-		v.Autoscroll = true
-		v.Wrap = true
+		if err := gm.g.SetKeybinding(chatListViewName, 'k', gocui.ModNone, gm.prevChat); err != nil {
+			return err
+		}
 
-		for _, val := range []entities.Message{
-			{
-				User:          "",
-				IsOwn:         true,
-				Domain:        "",
-				Text:          "hello",
-				TS:            time.Date(0, 0, 0, 1, 14, 15, 0, time.UTC),
-				IsLocalDomain: true,
-			},
-			{
-				User:          "user1",
-				IsOwn:         false,
-				Domain:        "local",
-				Text:          "hello",
-				TS:            time.Date(0, 0, 0, 1, 14, 16, 0, time.UTC),
-				IsLocalDomain: false,
-			},
-			{
-				User:          "user2",
-				IsOwn:         false,
-				Domain:        "",
-				Text:          "hello",
-				TS:            time.Date(0, 0, 0, 1, 14, 17, 0, time.UTC),
-				IsLocalDomain: true,
-			},
-			{
-				User:          "user3",
-				IsOwn:         false,
-				Domain:        "example.com",
-				Text:          "hello",
-				TS:            time.Date(0, 0, 0, 1, 14, 18, 0, time.UTC),
-				IsLocalDomain: false,
-			},
-			{
-				User:          "",
-				IsOwn:         true,
-				Domain:        "",
-				Text:          "hello",
-				TS:            time.Date(0, 0, 0, 1, 14, 19, 0, time.UTC),
-				IsLocalDomain: true,
-			},
-		} {
-			err = writeMessage(v, val)
-			if err != nil {
-				return err
-			}
+		if err := gm.g.SetKeybinding(chatListViewName, gocui.KeyArrowDown, gocui.ModNone, gm.nextChat); err != nil {
+			return err
+		}
+
+		if err := gm.g.SetKeybinding(chatListViewName, 'j', gocui.ModNone, gm.nextChat); err != nil {
+			return err
 		}
 	}
 
@@ -189,10 +133,14 @@ func (gm *Manager) Layout(g *gocui.Gui) error {
 }
 
 func (gm *Manager) nextView(g *gocui.Gui, v *gocui.View) error {
+	if gm.currentChatName == "" {
+		return nil
+	}
+
 	viewNames := map[string]string{
-		chatListViewName:    chatHistoryViewName,
-		chatHistoryViewName: chatMessageViewName,
-		chatMessageViewName: chatListViewName,
+		chatListViewName:                         chatHistoryViewName + gm.currentChatName,
+		chatHistoryViewName + gm.currentChatName: chatMessageViewName,
+		chatMessageViewName:                      chatListViewName,
 	}
 
 	next, ok := viewNames[v.Name()]
@@ -216,7 +164,7 @@ func (gm *Manager) nextView(g *gocui.Gui, v *gocui.View) error {
 
 func (gm *Manager) HandleMessage(msg entities.Message) {
 	gm.g.Update(func(g *gocui.Gui) error {
-		v, err := g.View(chatHistoryViewName)
+		v, err := g.View(chatHistoryViewName + gm.currentChatName)
 		if err != nil {
 			return err
 		}
@@ -268,4 +216,128 @@ func writeMessage(v *gocui.View, msg entities.Message) error {
 	}
 
 	return nil
+}
+
+func (gm *Manager) nextChat(g *gocui.Gui, v *gocui.View) error {
+	chats := v.BufferLines()
+
+	if len(chats) == 0 {
+		return nil
+	}
+
+	index := slices.Index(chats, gm.currentChatName)
+	nextIndex := (index + 1) % len(chats)
+
+	if index > -1 {
+		err := v.SetHighlight(index, false)
+		if err != nil {
+			return err
+		}
+
+		cv, err := g.View(chatHistoryViewName + gm.currentChatName)
+		if err != nil {
+			return err
+		}
+
+		cv.Visible = false
+	}
+
+	err := v.SetHighlight(nextIndex, true)
+	if err != nil {
+		return err
+	}
+
+	gm.currentChatName = chats[nextIndex]
+
+	cv, err := g.View(chatHistoryViewName + gm.currentChatName)
+	if err != nil {
+		return err
+	}
+
+	cv.Visible = true
+
+	return nil
+}
+
+func (gm *Manager) prevChat(g *gocui.Gui, v *gocui.View) error {
+	chats := v.BufferLines()
+
+	if len(chats) == 0 {
+		return nil
+	}
+
+	index := slices.Index(chats, gm.currentChatName)
+	nextIndex := (len(chats) + index - 1) % len(chats)
+
+	if index > -1 {
+		err := v.SetHighlight(index, false)
+		if err != nil {
+			return err
+		}
+
+		cv, err := g.View(chatHistoryViewName + gm.currentChatName)
+		if err != nil {
+			return err
+		}
+
+		cv.Visible = false
+	}
+
+	if nextIndex > -1 {
+		err := v.SetHighlight(nextIndex, true)
+		if err != nil {
+			return err
+		}
+
+		gm.currentChatName = chats[nextIndex]
+
+		cv, err := g.View(chatHistoryViewName + gm.currentChatName)
+		if err != nil {
+			return err
+		}
+
+		cv.Visible = true
+	}
+
+	return nil
+}
+
+func (gm *Manager) NewChat(name string) {
+	gm.g.Update(func(g *gocui.Gui) error {
+		maxX, maxY := g.Size()
+
+		if v, err := g.SetView(chatHistoryViewName+name, maxX/3, 0, maxX-1, maxY-4, 0); err != nil {
+			if !errors.Is(err, gocui.ErrUnknownView) {
+				return err
+			}
+
+			v.Title = "Chat " + name
+			v.Autoscroll = true
+			v.Wrap = true
+			v.Visible = false
+
+			lView, err := g.View(chatListViewName)
+			if err != nil {
+				return err
+			}
+
+			if lView.LinesHeight() > 0 {
+				lView.WriteString("\n")
+			}
+
+			lView.WriteString(name)
+
+			if lView.LinesHeight() == 1 {
+				err = lView.SetHighlight(0, true)
+				if err != nil {
+					return err
+				}
+
+				v.Visible = true
+				gm.currentChatName = name
+			}
+		}
+
+		return nil
+	})
 }
